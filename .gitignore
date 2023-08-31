@@ -1,5 +1,6 @@
 .Xil
 out
+xsim.covdb
 xsim.dir
 .compile-timestamp
 .elab-timestamp
