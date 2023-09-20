@@ -1,4 +1,5 @@
 // Copywrite (C) 2023 Ewen Crawford
+`timescale 1ns / 1ps
 
 module afifo #(
     parameter WIDTH = 4,
@@ -75,9 +76,11 @@ module afifo #(
     if (wrst) begin
       wptr <= 0;
       wgray <= 0;
+      wfull <= 0;
+      r2w_sync <= 0;
     end else begin
       // Flop increment input into memory/Gray write pointers
-      wptr <= wptr_next[PTR_WIDTH-1:0];
+      wptr <= wptr_next;
       wgray <= wgray_next; // Binary-to-Gray conversion
       // Flop full condition
       wfull <= wfull_next;
@@ -91,9 +94,11 @@ module afifo #(
     if (rrst) begin
       rptr <= 0;
       rgray <= 0;
+      rempty <= 1;
+      w2r_sync <= 0;
     end else begin
       // Flop increment input into memory/Gray read pointers
-      rptr <= rptr_next[PTR_WIDTH-1:0];
+      rptr <= rptr_next;
       rgray <= rgray_next; // Binary-to-Gray conversion
       // Flop empty condition
       rempty <= rempty_next;
@@ -105,13 +110,17 @@ module afifo #(
   // Memory for FIFO data storage. Should infer a simple dual-port BRAM
   logic [WIDTH-1:0] ram [DEPTH-1:0];
 
+  // Drop the MSB (wrap indicator bit) of each pointer when addressing memory
+  wire [PTR_WIDTH-1:0] waddr = wptr[PTR_WIDTH-1:0],
+		       raddr = rptr[PTR_WIDTH-1:0];
+
   // Write port
   always_ff @ (posedge wclk) begin
-    if (we & ~wfull) ram[wptr] <= wdata;
+    if (~wrst & we & ~wfull) ram[waddr] <= wdata;
   end
 
   // Read port
   always_ff @ (posedge rclk) begin
-    if (re) rdata <= ram[rptr];
+    if (~rrst & re) rdata <= ram[raddr];
   end
 endmodule
