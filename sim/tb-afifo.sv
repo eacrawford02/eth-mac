@@ -5,13 +5,12 @@
 `define MAX(a, b) ((a) > (b) ? (a) : (b))
 `endif
 
-// TODO: Format code for consistency and readability
 // TODO: Split classes/modules into separate files
 module tb_afifo #(
-    parameter WIDTH = 4,
-    parameter DEPTH = 4,
-    parameter WCLK_PRD = 10,
-    parameter RCLK_PRD = WCLK_PRD,
+    parameter WIDTH      = 4,
+    parameter DEPTH      = 4,
+    parameter WCLK_PRD   = 10,
+    parameter RCLK_PRD   = WCLK_PRD,
     parameter PHASE_DIFF = 0
   )();
 
@@ -30,12 +29,12 @@ module tb_afifo #(
   end
 
   // ------------------------
-  // Group design I/Os
+  // Group Design I/Os
   // ------------------------
 
   typedef struct {
-    rand logic wrst;
-    rand logic we;
+    rand logic             wrst;
+    rand logic             we;
     rand logic [WIDTH-1:0] wdata;
   } WriteInSigs;
 
@@ -45,39 +44,49 @@ module tb_afifo #(
   } ReadInSigs;
 
   typedef struct {
-    logic wfull;
+    logic             wfull;
     logic [WIDTH-1:0] rdata;
-    logic rempty;
+    logic             rempty;
   } OutSigs;
 
   // ------------------------
   // Specify Coverage
   // ------------------------
 
-  covergroup WriteCG (ref WriteInSigs in, ref logic re, ref OutSigs out) @ (posedge wclk);
-    rw_coll : coverpoint (re & in.we);
+  covergroup WriteCG (
+      ref WriteInSigs in, 
+      ref logic       re, 
+      ref OutSigs     out
+  ) @ (posedge wclk);
+    rw_coll   : coverpoint (re & in.we); // Cover r/w collisions (general case)
     // Cover r/w collisions under full condition
-    wfull : coverpoint out.wfull;
+    wfull     : coverpoint out.wfull;
     coll_cond : cross rw_coll, wfull;
-    wrst_coll : coverpoint (in.wrst & in.we);
-    oflw : coverpoint (in.we & out.wfull);
+    wrst_coll : coverpoint (in.wrst & in.we); // Cover write and reset collision
+    oflw      : coverpoint (in.we & out.wfull); // Cover overflow
   endgroup
 
-  covergroup ReadCG (ref ReadInSigs in, ref logic we, ref OutSigs out) @ (posedge rclk);
-    rw_coll : coverpoint (in.re & we);
+  covergroup ReadCG (
+      ref ReadInSigs in,
+      ref logic      we,
+      ref OutSigs    out
+  ) @ (posedge rclk);
+    rw_coll   : coverpoint (in.re & we); // Cover r/w collisions (general case)
     // Cover r/w collisions under empty condition
-    rempty : coverpoint out.rempty;
+    rempty    : coverpoint out.rempty;
     coll_cond : cross rw_coll, rempty;
-    rrst_coll : coverpoint (in.rrst & in.re);
-    re : coverpoint in.re;
-    empty : coverpoint out.rempty {
+    rrst_coll : coverpoint (in.rrst & in.re); // Cover read and reset collision
+    // Cover underflow
+    re        : coverpoint in.re;
+    empty     : coverpoint out.rempty {
       // We want to observe the case where rempty is asserted after all
       // elements are read out of the FIFO. Because rempty is initially
       // 1 following reset, we explicitly specify the sequence below to avoid 
-      // having the coverpoint hit the first time rempty goes low after a reset
+      // having the uflw coverpoint hit the first time rempty goes low after a 
+      // reset
       bins from_full = (0 => 1);
     }
-    uflw : cross re, empty;
+    uflw      : cross re, empty;
   endgroup
 
   // ------------------------
@@ -88,32 +97,32 @@ module tb_afifo #(
     typedef enum {OFLW, UFLW, RAND, DONE} TestSeq;
     TestSeq testSeq;
 
-    WriteCG wcg_inst;
-    ReadCG rcg_inst;
+    WriteCG wcg;
+    ReadCG rcg;
 
     function TestSeq getSequence();
       // Direct stimulus based on coverage samples. Effectively defines a 
       // sequence of tests, where each test biases the stimulus to increase the 
       // likelihood of hitting specific coverpoints
-      logic oflw_hit = wcg_inst.oflw.get_inst_coverage() == 100;
-      logic uflw_hit = rcg_inst.uflw.get_inst_coverage() == 100;
-      logic all_hit = (wcg_inst.get_inst_coverage() == 100) &&
-		      (rcg_inst.get_inst_coverage() == 100);
+      logic oflw_hit = wcg.oflw.get_inst_coverage() == 100;
+      logic uflw_hit = rcg.uflw.get_inst_coverage() == 100;
+      logic all_hit = (wcg.get_inst_coverage() == 100) &&
+		      (rcg.get_inst_coverage() == 100);
 
       case (testSeq)
-	OFLW: testSeq = oflw_hit ? UFLW : OFLW;
-	UFLW: testSeq = uflw_hit ? RAND : UFLW;
-	RAND: testSeq = all_hit ? DONE : RAND;
+	OFLW   : testSeq = oflw_hit ? UFLW : OFLW;
+	UFLW   : testSeq = uflw_hit ? RAND : UFLW;
+	RAND   : testSeq = all_hit ? DONE : RAND;
 	default: testSeq = DONE;
       endcase
 
       return testSeq;
     endfunction
 
-    function new(ref WriteCG wcg_inst, ref ReadCG rcg_inst);
+    function new(ref WriteCG wcg, ref ReadCG rcg);
       testSeq = OFLW;
-      this.wcg_inst = wcg_inst;
-      this.rcg_inst = rcg_inst;
+      this.wcg = wcg;
+      this.rcg = rcg;
     endfunction
   endclass
 
@@ -331,15 +340,15 @@ module ref_afifo #(
     parameter WIDTH = 4,
     parameter DEPTH = 4
   )(
-    input wclk,
-    input wrst,
-    input we,
-    input logic [WIDTH-1:0] wdata,
-    output logic wfull,
-    input rclk,
-    input rrst,
-    input re,
-    output logic rempty,
+    input                    wclk,
+    input                    wrst,
+    input                    we,
+    input  logic [WIDTH-1:0] wdata,
+    output logic             wfull,
+    input                    rclk,
+    input                    rrst,
+    input                    re,
+    output logic             rempty,
     output logic [WIDTH-1:0] rdata
   );
 
@@ -354,24 +363,25 @@ module ref_afifo #(
   // Toggle signals to indicate that a pointer has wrapped around the end of
   // the FIFO (used to determine full/empty conditions)
   logic wptr_wrap, rptr_wrap, wptr_wrap_next, rptr_wrap_next;
+
   assign wptr_wrap_next = wptr_wrap ^ (wptr_next == 0);
   assign rptr_wrap_next = rptr_wrap ^ (rptr_next == 0);
 
   // Model delay associated with 2FF synchronizers
-  logic [1:0] wptr_wrap_dly, rptr_wrap_dly;
-  logic [1:0][PTR_WIDTH-1:0] r2w_dly, w2r_dly;
+  logic [1:0]                wptr_wrap_dly, rptr_wrap_dly;
+  logic [1:0][PTR_WIDTH-1:0] rptr_sync_dly, wptr_sync_dly;
 
   always_ff @ (posedge wclk) begin
     if (wrst) begin
       wptr <= 0;
       wptr_wrap <= 0;
       rptr_wrap_dly <= 0;
-      r2w_dly <= 0;
+      rptr_sync_dly <= 0;
       wfull <= 0;
     end else begin
       // Shift read pointer and wrap indicator bit into write domain
       rptr_wrap_dly <= {rptr_wrap_dly[0], rptr_wrap};
-      r2w_dly <= {r2w_dly[0], rptr};
+      rptr_sync_dly <= {rptr_sync_dly[0], rptr};
 
       // Logic if write is valid
       if (we & ~wfull) begin
@@ -381,9 +391,10 @@ module ref_afifo #(
 
 	// FIFO is full if r/w pointers are the same and have wrapped an uneven
 	// number of times
-	wfull <= (wptr_next == r2w_dly[1]) & (wptr_wrap_next != rptr_wrap_dly[1]);
+	wfull <= (wptr_next == rptr_sync_dly[1]) & 
+	         (wptr_wrap_next != rptr_wrap_dly[1]);
       end else begin
-	wfull <= (wptr == r2w_dly[1]) & (wptr_wrap != rptr_wrap_dly[1]);
+	wfull <= (wptr == rptr_sync_dly[1]) & (wptr_wrap != rptr_wrap_dly[1]);
       end
     end
   end
@@ -393,12 +404,12 @@ module ref_afifo #(
       rptr <= 0;
       rptr_wrap <= 0;
       wptr_wrap_dly <= 0;
-      w2r_dly <= 0;
+      wptr_sync_dly <= 0;
       rempty <= 1;
     end else begin
       // Shift write pointer and wrap indicator bit into read domain
       wptr_wrap_dly <= {wptr_wrap_dly[0], wptr_wrap};
-      w2r_dly <= {w2r_dly[0], wptr};
+      wptr_sync_dly <= {wptr_sync_dly[0], wptr};
 
       // Logic if read is valid
       if (re) begin
@@ -411,12 +422,14 @@ module ref_afifo #(
 	  rptr_wrap <= rptr_wrap_next;
 
 	  // FIFO is empty simply if r/w pointers are the same
-	  rempty <= (rptr_next == w2r_dly[1]) & (rptr_wrap_next == wptr_wrap_dly[1]);
+	  rempty <= (rptr_next == wptr_sync_dly[1]) & 
+	            (rptr_wrap_next == wptr_wrap_dly[1]);
 	end else begin
-	  rempty <= (rptr == w2r_dly[1]) & (rptr_wrap_next == wptr_wrap_dly[1]);
+	  rempty <= (rptr == wptr_sync_dly[1]) & 
+	            (rptr_wrap_next == wptr_wrap_dly[1]);
 	end
       end else begin
-	rempty <= (rptr == w2r_dly[1]) & (rptr_wrap == wptr_wrap_dly[1]);
+	rempty <= (rptr == wptr_sync_dly[1]) & (rptr_wrap == wptr_wrap_dly[1]);
       end
     end
   end

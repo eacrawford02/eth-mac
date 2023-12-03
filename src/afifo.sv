@@ -6,16 +6,16 @@ module afifo #(
     parameter DEPTH = 4 // Depth must be a power-of-2
   )(
     // Write clock domain ports
-    input wclk,
-    input wrst,
-    input we,
-    input logic [WIDTH-1:0] wdata,
-    output logic wfull,
+    input                    wclk,
+    input                    wrst,
+    input                    we,
+    input  logic [WIDTH-1:0] wdata,
+    output logic             wfull,
     // Read clock domain ports
-    input rclk,
-    input rrst,
-    input re,
-    output logic rempty,
+    input                    rclk,
+    input                    rrst,
+    input                    re,
+    output logic             rempty,
     output logic [WIDTH-1:0] rdata
   );
 
@@ -23,8 +23,8 @@ module afifo #(
 
   // Synchronized read/write pointers (Gray coded)
   logic [1:0][PTR_WIDTH:0] r2w_sync, w2r_sync;
-  wire  [PTR_WIDTH:0] wgray_sync = w2r_sync[1],
-		      rgray_sync = r2w_sync[1];
+  wire  [PTR_WIDTH:0]      wgray_sync = w2r_sync[1],
+		           rgray_sync = r2w_sync[1];
 
   // Memory-addressing read/write pointers
   logic [PTR_WIDTH:0] wptr, rptr;
@@ -69,6 +69,10 @@ module afifo #(
   //
   wire wfull_next = (wgray_next == {~rgray_sync[PTR_WIDTH:PTR_WIDTH-1],
 				     rgray_sync[PTR_WIDTH-2:0]});
+  
+  // For empty condition to be true, all bits of the gray code pointers should
+  // be equal. This implies that the pointers will have wrapped an even number
+  // of times
   wire rempty_next = (rgray_next == wgray_sync);
 
  // Write-domain sequential logic
